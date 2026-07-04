@@ -95,7 +95,7 @@ impl EndpointKind {
 impl ConfigToml {
     pub fn load(path: &str) -> Result<Self> {
         let content =
-            fs::read_to_string(path).with_context(|| format!("Failed to read config {}", path))?;
+            fs::read_to_string(path).with_context(|| format!("Failed to read config {path}"))?;
         let config = toml::from_str(&content).map_err(|err| anyhow!(err))?;
         Ok(config)
     }
@@ -127,7 +127,7 @@ impl ConfigToml {
         let toml_string = toml::to_string_pretty(&default_config)
             .context("Failed to serialize default config")?;
         fs::write(path, toml_string)
-            .with_context(|| format!("Failed to write default config {}", path))?;
+            .with_context(|| format!("Failed to write default config {path}"))?;
 
         Ok(default_config)
     }

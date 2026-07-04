@@ -8,7 +8,7 @@ use std::{
 };
 use tracing::{info, warn};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct TransactionData {
     pub wallclock_secs: f64,
     pub elapsed_since_start: Duration,
@@ -40,7 +40,7 @@ impl Comparator {
         &self,
         endpoint: &str,
         signature: &str,
-        data: TransactionData,
+        data: &TransactionData,
         expected_producers: usize,
     ) -> Option<HashMap<String, TransactionData>> {
         if expected_producers == 0 {
@@ -157,7 +157,7 @@ pub fn percentile(sorted_data: &[f64], p: f64) -> f64 {
 
 pub fn open_log_file(name: &str) -> std::io::Result<impl Write> {
     let safe_name = sanitize_filename(name);
-    let log_filename = format!("transaction_log_{}.txt", safe_name);
+    let log_filename = format!("transaction_log_{safe_name}.txt");
     OpenOptions::new()
         .create(true)
         .append(true)
@@ -170,7 +170,7 @@ pub fn write_log_entry(
     endpoint_name: &str,
     signature: &str,
 ) -> std::io::Result<()> {
-    let log_entry = format!("[{:.3}] [{}] {}\n", timestamp, endpoint_name, signature);
+    let log_entry = format!("[{timestamp:.3}] [{endpoint_name}] {signature}\n");
     file.write_all(log_entry.as_bytes())
 }
 

@@ -148,13 +148,10 @@ async fn process_yellowstone_endpoint(
                                         if has_account {
                                             let wallclock = get_current_timestamp();
                                             let elapsed = start_instant.elapsed();
-                                            let signature = match tx.transaction.as_ref()
-                                                .and_then(|t| t.signatures.first()) {
-                                                Some(sig) => bs58::encode(sig).into_string(),
-                                                None => {
-                                                    warn!(endpoint = %endpoint_name, "Missing signature in transaction");
-                                                    continue;
-                                                }
+                                            let signature = if let Some(sig) = tx.transaction.as_ref()
+                                                .and_then(|t| t.signatures.first()) { bs58::encode(sig).into_string() } else {
+                                                warn!(endpoint = %endpoint_name, "Missing signature in transaction");
+                                                continue;
                                             };
 
                                             if let Some(file) = log_file.as_mut() {

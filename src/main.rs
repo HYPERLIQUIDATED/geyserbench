@@ -64,7 +64,7 @@ impl CliArgs {
                     std::process::exit(0);
                 }
                 other => {
-                    eprintln!("Unknown argument: {}", other);
+                    eprintln!("Unknown argument: {other}");
                     print_usage();
                     std::process::exit(1);
                 }
@@ -259,7 +259,7 @@ async fn main() -> Result<()> {
 
     for handle in handles {
         match handle.await {
-            Ok(Ok(_)) => {}
+            Ok(Ok(())) => {}
             Ok(Err(e)) => error!(error = ?e, "Provider task returned error"),
             Err(e) => error!(error = ?e, "Provider join error"),
         }
@@ -267,13 +267,13 @@ async fn main() -> Result<()> {
 
     let run_aborted = aborted.load(Ordering::Acquire);
 
-    let run_summary = if !run_aborted {
+    let run_summary = if run_aborted {
+        None
+    } else {
         Some(analysis::compute_run_summary(
             comparator.as_ref(),
             &endpoint_names,
         ))
-    } else {
-        None
     };
 
     if let Some(handle) = backend_handle {
@@ -314,7 +314,9 @@ async fn main() -> Result<()> {
         );
     }
 
-    if !run_aborted {
+    if run_aborted {
+        info!("Benchmark aborted before completion; no results were generated");
+    } else {
         if let Some(summary) = run_summary.as_ref() {
             analysis::display_run_summary(summary);
             let metrics_json = analysis::build_metrics_report(summary);
@@ -324,8 +326,6 @@ async fn main() -> Result<()> {
         if let Some(run_id) = backend_run_id {
             println!("🔗 Share this benchmark run: https://runs.solstack.app/run/{run_id}");
         }
-    } else {
-        info!("Benchmark aborted before completion; no results were generated");
     }
 
     Ok(())

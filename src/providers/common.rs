@@ -50,7 +50,7 @@ impl TransactionAccumulator {
 
 pub fn fatal_connection_error(endpoint: &str, err: impl std::fmt::Display) -> ! {
     error!(endpoint = endpoint, error = %err, "Failed to connect to endpoint");
-    eprintln!("Failed to connect to endpoint {}: {}", endpoint, err);
+    eprintln!("Failed to connect to endpoint {endpoint}: {err}");
     std::process::exit(1);
 }
 
@@ -62,7 +62,7 @@ pub fn build_signature_envelope(
     total_producers: usize,
 ) -> Option<SignatureEnvelope> {
     comparator
-        .record_observation(endpoint, signature, data, total_producers)
+        .record_observation(endpoint, signature, &data, total_producers)
         .map(|observations| {
             let mut payload = observations
                 .into_iter()

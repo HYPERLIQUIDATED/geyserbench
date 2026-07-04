@@ -146,7 +146,7 @@ pub async fn connect_stream(
     let url = normalize_stream_url(&options.url)?;
     let (mut socket, _) = connect_async(url.as_str())
         .await
-        .map_err(|err| anyhow!("websocket connection failed: {}", err))?;
+        .map_err(|err| anyhow!("websocket connection failed: {err}"))?;
 
     let (status_tx, status_rx) = watch::channel(BackendStatus::Initializing);
     let (command_tx, command_rx) = mpsc::channel(COMMAND_BUFFER);
@@ -163,7 +163,7 @@ pub async fn connect_stream(
         serde_json::to_string(&start_message).context("failed to serialise start message")?;
     let t_send_ms = get_current_timestamp() * 1_000.0;
     socket
-        .send(Message::Text(start_json))
+        .send(Message::Text(start_json.into()))
         .await
         .context("failed to send start message")?;
 
@@ -231,7 +231,7 @@ impl BackendHandle {
         self.command_tx
             .send(BackendCommand::End)
             .await
-            .map_err(|err| anyhow!("failed to send end command: {}", err))?;
+            .map_err(|err| anyhow!("failed to send end command: {err}"))?;
 
         loop {
             self.status_rx
@@ -261,10 +261,9 @@ fn normalize_stream_url(raw: &str) -> Result<Url> {
         || raw.starts_with("http://")
         || raw.starts_with("https://")
     {
-        Url::parse(raw).with_context(|| format!("invalid backend url {}", raw))?
+        Url::parse(raw).with_context(|| format!("invalid backend url {raw}"))?
     } else {
-        Url::parse(&format!("ws://{}", raw))
-            .with_context(|| format!("invalid backend url {}", raw))?
+        Url::parse(&format!("ws://{raw}")).with_context(|| format!("invalid backend url {raw}"))?
     };
 
     match parsed.scheme() {
@@ -272,14 +271,14 @@ fn normalize_stream_url(raw: &str) -> Result<Url> {
         "http" => {
             parsed
                 .set_scheme("ws")
-                .map_err(|_| anyhow!("failed to convert http url to websocket"))?;
+                .map_err(|()| anyhow!("failed to convert http url to websocket"))?;
         }
         "https" => {
             parsed
                 .set_scheme("wss")
-                .map_err(|_| anyhow!("failed to convert https url to websocket"))?;
+                .map_err(|()| anyhow!("failed to convert https url to websocket"))?;
         }
-        other => bail!("unsupported backend url scheme '{}'", other),
+        other => bail!("unsupported backend url scheme '{other}'"),
     }
 
     if parsed.path() == "/" || parsed.path().is_empty() {
@@ -311,9 +310,9 @@ async fn wait_for_start_ack(
                     }
                     let mut array = [0u8; 32];
                     array.copy_from_slice(&bytes);
-                    let clock_offset_ms = started_at_unix_ms
-                        .map(|server_ms| server_ms as f64 - ((t_send_ms + t_recv_ms) / 2.0))
-                        .unwrap_or(0.0);
+                    let clock_offset_ms = started_at_unix_ms.map_or(0.0, |server_ms| {
+                        server_ms as f64 - f64::midpoint(t_send_ms, t_recv_ms)
+                    });
                     debug!(
                         run_id = %run_id,
                         t_send_ms,
@@ -331,7 +330,7 @@ async fn wait_for_start_ack(
                 }
                 Ok(InboundMessage::Error { message, run_id }) => {
                     let identifier = run_id.unwrap_or_else(|| "unknown".to_string());
-                    bail!("backend rejected stream {}: {}", identifier, message);
+                    bail!("backend rejected stream {identifier}: {message}");
                 }
                 Ok(InboundMessage::Completed { data }) => {
                     warn!(?data, "Received completion before handshake finished");
@@ -355,8 +354,8 @@ async fn wait_for_start_ack(
                     frame.map(|f| f.reason)
                 );
             }
-            Ok(Message::Binary(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {}
-            Err(err) => bail!("backend socket failed during handshake: {}", err),
+            Ok(Message::Binary(_) | Message::Pong(_) | Message::Frame(_)) => {}
+            Err(err) => bail!("backend socket failed during handshake: {err}"),
         }
     }
 
@@ -391,23 +390,23 @@ async fn run_backend_loop(
                     Some(BackendCommand::Signature(batch)) => {
                         if let Err(err) = send_signature(&mut writer, &session_nonce, batch).await {
                             error!(run_id = %run_id, error = %err, "Failed to send signature frame");
-                            let _ = status_tx.send(BackendStatus::Failed { message: format!("failed to send signature: {}", err) });
+                            let _ = status_tx.send(BackendStatus::Failed { message: format!("failed to send signature: {err}") });
                             break;
                         }
                     }
                     Some(BackendCommand::End) => {
                         match serde_json::to_string(&OutboundMessage::End) {
                             Ok(payload) => {
-                                if let Err(err) = writer.send(Message::Text(payload)).await {
+                                if let Err(err) = writer.send(Message::Text(payload.into())).await {
                                     error!(run_id = %run_id, error = %err, "Failed to send end frame");
-                                    let _ = status_tx.send(BackendStatus::Failed { message: format!("failed to send end frame: {}", err) });
+                                    let _ = status_tx.send(BackendStatus::Failed { message: format!("failed to send end frame: {err}") });
                                     break;
                                 }
                             }
                             Err(err) => {
                                 error!(run_id = %run_id, error = %err, "Failed to serialise end frame");
                                 let _ = status_tx.send(BackendStatus::Failed {
-                                    message: format!("failed to serialise end frame: {}", err),
+                                    message: format!("failed to serialise end frame: {err}"),
                                 });
                                 break;
                             }
@@ -460,17 +459,15 @@ async fn run_backend_loop(
                         let reason = frame.map(|f| f.reason).unwrap_or_default();
                         warn!(run_id = %run_id, reason = %reason, "Backend closed websocket");
                         let _ = status_tx.send(BackendStatus::Failed {
-                            message: format!("backend closed connection: {}", reason),
+                            message: format!("backend closed connection: {reason}"),
                         });
                         break;
                     }
-                    Some(Ok(Message::Binary(_)))
-                    | Some(Ok(Message::Pong(_)))
-                    | Some(Ok(Message::Frame(_))) => {}
+                    Some(Ok(Message::Binary(_) | Message::Pong(_) | Message::Frame(_))) => {}
                     Some(Err(err)) => {
                         error!(run_id = %run_id, error = %err, "Backend websocket error");
                         let _ = status_tx.send(BackendStatus::Failed {
-                            message: format!("backend websocket error: {}", err),
+                            message: format!("backend websocket error: {err}"),
                         });
                         break;
                     }
@@ -522,7 +519,7 @@ async fn send_signature(
 
     let json = serde_json::to_string(&payload).context("failed to serialise signature payload")?;
     writer
-        .send(Message::Text(json))
+        .send(Message::Text(json.into()))
         .await
         .context("failed to send signature payload")?;
     Ok(())
@@ -585,12 +582,11 @@ async fn resolve_endpoint_ip(endpoint: &Endpoint) -> Option<String> {
         }
     };
 
-    let host = match parsed.host_str() {
-        Some(host) => host.to_string(),
-        None => {
-            warn!(endpoint = %endpoint.name, url = %endpoint.url, "Endpoint URL has no host component");
-            return None;
-        }
+    let host = if let Some(host) = parsed.host_str() {
+        host.to_string()
+    } else {
+        warn!(endpoint = %endpoint.name, url = %endpoint.url, "Endpoint URL has no host component");
+        return None;
     };
 
     if let Ok(ip) = host.parse::<IpAddr>() {
@@ -598,7 +594,7 @@ async fn resolve_endpoint_ip(endpoint: &Endpoint) -> Option<String> {
     }
 
     let port = parsed.port_or_known_default().unwrap_or(80);
-    let target = format!("{}:{}", host, port);
+    let target = format!("{host}:{port}");
     match lookup_host(target).await {
         Ok(mut addrs) => addrs.next().map(|addr| addr.ip().to_string()),
         Err(err) => {

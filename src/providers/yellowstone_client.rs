@@ -125,7 +125,7 @@ impl GeyserGrpcBuilder {
     where
         T: TryInto<AsciiMetadataValue, Error = InvalidMetadataValue>,
     {
-        self.x_token = x_token.map(|value| value.try_into()).transpose()?;
+        self.x_token = x_token.map(std::convert::TryInto::try_into).transpose()?;
         Ok(self)
     }
 

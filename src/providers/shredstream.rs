@@ -87,7 +87,7 @@ async fn process_shredstream_endpoint(
         }
 
         Some(Ok(slot_entry)) = stream.next() => {
-            let entries = match bincode::deserialize::<Vec<solana_entry::entry::Entry>>(
+            let entries = match wincode::deserialize::<Vec<solana_entry::entry::Entry>>(
                 &slot_entry.entries,
             ) {
                 Ok(e) => e,

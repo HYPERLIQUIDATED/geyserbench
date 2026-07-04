@@ -86,7 +86,7 @@ pub fn compute_run_summary(comparator: &Comparator, endpoint_names: &[String]) -
         total_signatures += 1;
         let first_endpoint_name = first_endpoint.clone();
 
-        for (endpoint, tx) in sig_data.iter() {
+        for (endpoint, tx) in sig_data {
             if let Some(stats) = endpoint_stats.get_mut(endpoint) {
                 stats.total_observations += 1;
                 if endpoint == &first_endpoint_name {
@@ -102,7 +102,7 @@ pub fn compute_run_summary(comparator: &Comparator, endpoint_names: &[String]) -
 
     let endpoints: Vec<EndpointSummary> = endpoint_stats
         .into_iter()
-        .map(|(endpoint, stats)| build_summary(endpoint, stats, total_signatures))
+        .map(|(endpoint, stats)| build_summary(endpoint, &stats, total_signatures))
         .collect();
 
     let has_data = total_signatures > 0;
@@ -126,10 +126,8 @@ pub fn display_run_summary(summary: &RunSummary) {
     println!("\nFinished test results");
     println!("--------------------------------------------");
 
-    if !summary.has_data {
-        println!("Not enough data");
-    } else {
-	let fastest_name_ref = summary.fastest_endpoint.as_deref();
+    if summary.has_data {
+        let fastest_name_ref = summary.fastest_endpoint.as_deref();
         let mut summary_rows: Vec<&EndpointSummary> = summary.endpoints.iter().collect();
         summary_rows.sort_by(|a, b| compare_latency(a, b));
 
@@ -143,7 +141,7 @@ pub fn display_run_summary(summary: &RunSummary) {
             let win_rate = if raw_win_rate == "—" {
                 raw_win_rate
             } else {
-                format!("{}%", raw_win_rate)
+                format!("{raw_win_rate}%")
             };
             let is_fastest = fastest_name_ref == Some(summary.name.as_str());
 
@@ -155,11 +153,12 @@ pub fn display_run_summary(summary: &RunSummary) {
             } else {
                 let p50_delay = summary
                     .p50_delay_ms
-                    .map(|v| format!("{:.2}ms", v))
-                    .unwrap_or_else(|| "—".to_string());
+                    .map_or_else(|| "—".to_string(), |v| format!("{v:.2}ms"));
                 println!("{}: Win rate {}, p50 {}", summary.name, win_rate, p50_delay);
             }
         }
+    } else {
+        println!("Not enough data");
     }
 
     println!("\nDetailed test results");
@@ -193,7 +192,7 @@ pub fn display_run_summary(summary: &RunSummary) {
         ]);
     }
 
-    println!("{}", table);
+    println!("{table}");
 }
 
 pub fn build_metrics_report(summary: &RunSummary) -> Value {
@@ -227,7 +226,7 @@ fn diff_ms(tx: &TransactionData, first_tx: &TransactionData) -> f64 {
 
 fn build_summary(
     endpoint: String,
-    stats: EndpointStats,
+    stats: &EndpointStats,
     total_signatures: usize,
 ) -> EndpointSummary {
     let mut summary = EndpointSummary {
@@ -254,9 +253,7 @@ fn build_summary(
 }
 
 fn format_latency_value(value: Option<f64>) -> String {
-    value
-        .map(|v| format!("{:.2}", v))
-        .unwrap_or_else(|| "—".to_string())
+    value.map_or_else(|| "—".to_string(), |v| format!("{v:.2}"))
 }
 
 fn compare_latency(lhs: &EndpointSummary, rhs: &EndpointSummary) -> Ordering {
